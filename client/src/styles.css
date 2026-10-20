@@ -1,0 +1,474 @@
+import { useEffect, useMemo, useState } from 'react';
+
+const API_BASE = '/api';
+
+const defaultWorker = {
+  dni: '',
+  first_name: '',
+  last_name: '',
+  position: '',
+  area: '',
+  contract_type: 'indefinido',
+  labor_regime: 'general',
+  base_salary: 0,
+  pension_system: 'AFP',
+  bank_account: '',
+  entry_date: '',
+};
+
+const defaultParam = {
+  code: '',
+  name: '',
+  type: 'laboral',
+  value: '0',
+  unit: 'monto',
+  source: '',
+  effective_from: '2025-01-01',
+  effective_to: '',
+  description: '',
+};
+
+function App() {
+  const [token, setToken] = useState(localStorage.getItem('planilla_token') || '');
+  const [user, setUser] = useState(null);
+  const [loginData, setLoginData] = useState({
+    email: 'admin@empresa.test',
+    password: 'admin123',
+  });
+  const [workers, setWorkers] = useState([]);
+  const [parameters, setParameters] = useState([]);
+  const [payrolls, setPayrolls] = useState([]);
+  const [workerForm, setWorkerForm] = useState(defaultWorker);
+  const [paramForm, setParamForm] = useState(defaultParam);
+  const [payrollForm, setPayrollForm] = useState({
+    month: '2026-10',
+    worker_id: '',
+    worked_days: 22,
+    absences: 0,
+    tardiness: 0,
+    overtime_hours: 0,
+    family_allowance: 0,
+    other_income: 0,
+    deductions: 0,
+    employer_contributions: 0,
+    notes: '',
+  });
+  const [message, setMessage] = useState('');
+
+  const headers = useMemo(
+    () => ({
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }),
+    [token]
+  );
+
+  const loadData = async () => {
+    if (!token) return;
+
+    try {
+      const [workersRes, paramsRes, payrollsRes, meRes] = await Promise.all([
+        fetch(`${API_BASE}/workers`, { headers }),
+        fetch(`${API_BASE}/parameters`, { headers }),
+        fetch(`${API_BASE}/payrolls`, { headers }),
+        fetch(`${API_BASE}/auth/me`, { headers }),
+      ]);
+
+      const workersData = await workersRes.json();
+      const paramsData = await paramsRes.json();
+      const payrollsData = await payrollsRes.json();
+      const meData = await meRes.json();
+
+      if (workersData.workers) setWorkers(workersData.workers);
+      if (paramsData.parameters) setParameters(paramsData.parameters);
+      if (payrollsData.payrolls) setPayrolls(payrollsData.payrolls);
+      if (meData.user) setUser(meData.user);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      loadData();
+    }
+  }, [token]);
+
+  const login = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(loginData),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setMessage(data.message || 'Error en inicio de sesión');
+        return;
+      }
+
+      localStorage.setItem('planilla_token', data.token);
+      setToken(data.token);
+      setMessage('Sesión iniciada correctamente.');
+    } catch (error) {
+      setMessage('No se pudo iniciar sesión.');
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem('planilla_token');
+    setToken('');
+    setUser(null);
+    setWorkers([]);
+    setParameters([]);
+    setPayrolls([]);
+  };
+
+  const createWorker = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await fetch(`${API_BASE}/workers`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(workerForm),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setMessage(data.message || 'No se pudo guardar el trabajador');
+        return;
+      }
+      setWorkerForm(defaultWorker);
+      setMessage('Trabajador registrado correctamente.');
+      loadData();
+    } catch (error) {
+      setMessage('Error al registrar trabajador.');
+    }
+  };
+
+  const createParameter = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await fetch(`${API_BASE}/parameters`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(paramForm),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setMessage(data.message || 'No se pudo guardar el parámetro');
+        return;
+      }
+      setParamForm(defaultParam);
+      setMessage('Parámetro guardado correctamente.');
+      loadData();
+    } catch (error) {
+      setMessage('Error al guardar parámetro.');
+    }
+  };
+
+  const createPayroll = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await fetch(`${API_BASE}/payrolls`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          month: payrollForm.month,
+          worker_id: payrollForm.worker_id,
+          worked_days: Number(payrollForm.worked_days),
+          absences: Number(payrollForm.absences),
+          tardiness: Number(payrollForm.tardiness),
+          overtime_hours: Number(payrollForm.overtime_hours),
+          family_allowance: Number(payrollForm.family_allowance),
+          other_income: Number(payrollForm.other_income),
+          deductions: Number(payrollForm.deductions),
+          employer_contributions: Number(payrollForm.employer_contributions),
+          notes: payrollForm.notes,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setMessage(data.message || 'No se pudo crear la planilla');
+        return;
+      }
+      setPayrollForm({
+        month: '2026-10',
+        worker_id: '',
+        worked_days: 22,
+        absences: 0,
+        tardiness: 0,
+        overtime_hours: 0,
+        family_allowance: 0,
+        other_income: 0,
+        deductions: 0,
+        employer_contributions: 0,
+        notes: '',
+      });
+      setMessage('Planilla creada correctamente.');
+      loadData();
+    } catch (error) {
+      setMessage('Error al crear la planilla.');
+    }
+  };
+
+  const approvePayroll = async (payrollId) => {
+    try {
+      const response = await fetch(`${API_BASE}/payrolls/${payrollId}/approve`, {
+        method: 'POST',
+        headers,
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setMessage(data.message || 'No se pudo aprobar la planilla');
+        return;
+      }
+      setMessage('Planilla aprobada correctamente.');
+      loadData();
+    } catch (error) {
+      setMessage('Error al aprobar planilla.');
+    }
+  };
+
+  const summary = useMemo(() => {
+    const totalBruto = payrolls.reduce((sum, item) => sum + Number(item.total_bruto || 0), 0);
+    const totalNeto = payrolls.reduce((sum, item) => sum + Number(item.total_neto || 0), 0);
+    const totalDescuentos = payrolls.reduce((sum, item) => sum + Number(item.total_descuentos || 0), 0);
+    return { totalBruto, totalNeto, totalDescuentos };
+  }, [payrolls]);
+
+  if (!token || !user) {
+    return (
+      <div className="app-shell">
+        <div className="login-card">
+          <h1>Planillas Perú</h1>
+          <p>Control de trabajadores, planillas y autorizaciones</p>
+
+          <form onSubmit={login} className="stack">
+            <label>
+              Correo electrónico
+              <input
+                value={loginData.email}
+                onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                type="email"
+              />
+            </label>
+
+            <label>
+              Contraseña
+              <input
+                value={loginData.password}
+                onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                type="password"
+              />
+            </label>
+
+            <button type="submit">Iniciar sesión</button>
+          </form>
+
+          {message && <div className="message">{message}</div>}
+
+          <div className="demo-credentials">
+            <strong>Credenciales demo</strong>
+            <span>admin@empresa.test / admin123</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app-shell dashboard">
+      <aside className="sidebar">
+        <h2>Planillas Perú</h2>
+        <nav>
+          <a href="#resumen">Resumen</a>
+          <a href="#trabajadores">Trabajadores</a>
+          <a href="#parametros">Parámetros</a>
+          <a href="#planillas">Planillas</a>
+        </nav>
+        <button className="logout" onClick={logout}>Cerrar sesión</button>
+      </aside>
+
+      <main className="content">
+        <header className="topbar">
+          <div>
+            <h3>Bienvenido</h3>
+            <p>
+              {user.first_name} {user.last_name} · {user.role}
+            </p>
+          </div>
+        </header>
+
+        {message && <div className="message">{message}</div>}
+
+        <section id="resumen" className="cards">
+          <div className="card">
+            <span>Total bruto</span>
+            <strong>S/ {summary.totalBruto.toFixed(2)}</strong>
+          </div>
+          <div className="card">
+            <span>Total descuentos</span>
+            <strong>S/ {summary.totalDescuentos.toFixed(2)}</strong>
+          </div>
+          <div className="card">
+            <span>Total neto</span>
+            <strong>S/ {summary.totalNeto.toFixed(2)}</strong>
+          </div>
+        </section>
+
+        <section id="trabajadores" className="panel">
+          <h3>Trabajadores</h3>
+          <form onSubmit={createWorker} className="form-grid">
+            <input value={workerForm.dni} onChange={(e) => setWorkerForm({ ...workerForm, dni: e.target.value })} placeholder="DNI" />
+            <input value={workerForm.first_name} onChange={(e) => setWorkerForm({ ...workerForm, first_name: e.target.value })} placeholder="Nombres" />
+            <input value={workerForm.last_name} onChange={(e) => setWorkerForm({ ...workerForm, last_name: e.target.value })} placeholder="Apellidos" />
+            <input value={workerForm.position} onChange={(e) => setWorkerForm({ ...workerForm, position: e.target.value })} placeholder="Cargo" />
+            <input value={workerForm.area} onChange={(e) => setWorkerForm({ ...workerForm, area: e.target.value })} placeholder="Área" />
+            <select value={workerForm.contract_type} onChange={(e) => setWorkerForm({ ...workerForm, contract_type: e.target.value })}>
+              <option value="indefinido">Indefinido</option>
+              <option value="a_plazo">A plazo</option>
+              <option value="por_servicios">Por servicios</option>
+            </select>
+            <select value={workerForm.labor_regime} onChange={(e) => setWorkerForm({ ...workerForm, labor_regime: e.target.value })}>
+              <option value="general">General</option>
+              <option value="microempresa">Microempresa</option>
+            </select>
+            <input type="number" value={workerForm.base_salary} onChange={(e) => setWorkerForm({ ...workerForm, base_salary: Number(e.target.value) })} placeholder="Sueldo base" />
+            <select value={workerForm.pension_system} onChange={(e) => setWorkerForm({ ...workerForm, pension_system: e.target.value })}>
+              <option value="AFP">AFP</option>
+              <option value="ONP">ONP</option>
+            </select>
+            <input value={workerForm.bank_account} onChange={(e) => setWorkerForm({ ...workerForm, bank_account: e.target.value })} placeholder="Cuenta bancaria" />
+            <input type="date" value={workerForm.entry_date} onChange={(e) => setWorkerForm({ ...workerForm, entry_date: e.target.value })} />
+            <button type="submit">Guardar trabajador</button>
+          </form>
+
+          <table>
+            <thead>
+              <tr>
+                <th>DNI</th>
+                <th>Nombre</th>
+                <th>Área</th>
+                <th>Cargo</th>
+                <th>Sueldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {workers.map((worker) => (
+                <tr key={worker.id}>
+                  <td>{worker.dni}</td>
+                  <td>{worker.first_name} {worker.last_name}</td>
+                  <td>{worker.area}</td>
+                  <td>{worker.position}</td>
+                  <td>S/ {Number(worker.base_salary).toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <section id="parametros" className="panel">
+          <h3>Parámetros laborales y pensionarios</h3>
+          <form onSubmit={createParameter} className="form-grid">
+            <input value={paramForm.code} onChange={(e) => setParamForm({ ...paramForm, code: e.target.value })} placeholder="Código" />
+            <input value={paramForm.name} onChange={(e) => setParamForm({ ...paramForm, name: e.target.value })} placeholder="Nombre" />
+            <select value={paramForm.type} onChange={(e) => setParamForm({ ...paramForm, type: e.target.value })}>
+              <option value="laboral">Laboral</option>
+              <option value="pensionario">Pensionario</option>
+            </select>
+            <input value={paramForm.value} onChange={(e) => setParamForm({ ...paramForm, value: e.target.value })} placeholder="Valor" />
+            <input value={paramForm.unit} onChange={(e) => setParamForm({ ...paramForm, unit: e.target.value })} placeholder="Unidad" />
+            <input value={paramForm.source} onChange={(e) => setParamForm({ ...paramForm, source: e.target.value })} placeholder="Fuente" />
+            <input type="date" value={paramForm.effective_from} onChange={(e) => setParamForm({ ...paramForm, effective_from: e.target.value })} />
+            <input type="date" value={paramForm.effective_to} onChange={(e) => setParamForm({ ...paramForm, effective_to: e.target.value })} />
+            <input value={paramForm.description} onChange={(e) => setParamForm({ ...paramForm, description: e.target.value })} placeholder="Descripción" />
+            <button type="submit">Guardar parámetro</button>
+          </form>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Tipo</th>
+                <th>Valor</th>
+                <th>Fuente</th>
+                <th>Vigencia</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parameters.map((param) => (
+                <tr key={param.id}>
+                  <td>{param.code}</td>
+                  <td>{param.type}</td>
+                  <td>{param.value}</td>
+                  <td>{param.source}</td>
+                  <td>{param.effective_from} - {param.effective_to || 'vigente'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <section id="planillas" className="panel">
+          <h3>Planillas</h3>
+          <form onSubmit={createPayroll} className="form-grid">
+            <input type="month" value={payrollForm.month} onChange={(e) => setPayrollForm({ ...payrollForm, month: e.target.value })} />
+            <select value={payrollForm.worker_id} onChange={(e) => setPayrollForm({ ...payrollForm, worker_id: e.target.value })}>
+              <option value="">Seleccionar trabajador</option>
+              {workers.map((worker) => (
+                <option key={worker.id} value={worker.id}>
+                  {worker.first_name} {worker.last_name}
+                </option>
+              ))}
+            </select>
+            <input type="number" value={payrollForm.worked_days} onChange={(e) => setPayrollForm({ ...payrollForm, worked_days: e.target.value })} placeholder="Días trabajados" />
+            <input type="number" value={payrollForm.absences} onChange={(e) => setPayrollForm({ ...payrollForm, absences: e.target.value })} placeholder="Faltas" />
+            <input type="number" value={payrollForm.tardiness} onChange={(e) => setPayrollForm({ ...payrollForm, tardiness: e.target.value })} placeholder="Tardanzas" />
+            <input type="number" value={payrollForm.overtime_hours} onChange={(e) => setPayrollForm({ ...payrollForm, overtime_hours: e.target.value })} placeholder="Horas extra" />
+            <input type="number" value={payrollForm.family_allowance} onChange={(e) => setPayrollForm({ ...payrollForm, family_allowance: e.target.value })} placeholder="Asignación familiar" />
+            <input type="number" value={payrollForm.other_income} onChange={(e) => setPayrollForm({ ...payrollForm, other_income: e.target.value })} placeholder="Otros ingresos" />
+            <input type="number" value={payrollForm.deductions} onChange={(e) => setPayrollForm({ ...payrollForm, deductions: e.target.value })} placeholder="Descuentos" />
+            <input type="number" value={payrollForm.employer_contributions} onChange={(e) => setPayrollForm({ ...payrollForm, employer_contributions: e.target.value })} placeholder="Aportes empleador" />
+            <input value={payrollForm.notes} onChange={(e) => setPayrollForm({ ...payrollForm, notes: e.target.value })} placeholder="Observaciones" />
+            <button type="submit">Crear planilla</button>
+          </form>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Mes</th>
+                <th>Status</th>
+                <th>Bruto</th>
+                <th>Descuentos</th>
+                <th>Neto</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payrolls.map((payroll) => (
+                <tr key={payroll.id}>
+                  <td>{payroll.code}</td>
+                  <td>{payroll.month}</td>
+                  <td>{payroll.status}</td>
+                  <td>S/ {Number(payroll.total_bruto || 0).toFixed(2)}</td>
+                  <td>S/ {Number(payroll.total_descuentos || 0).toFixed(2)}</td>
+                  <td>S/ {Number(payroll.total_neto || 0).toFixed(2)}</td>
+                  <td>
+                    {payroll.status !== 'aprobada' && (
+                      <button onClick={() => approvePayroll(payroll.id)}>Aprobar</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+export default App;
